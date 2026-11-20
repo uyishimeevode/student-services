@@ -32,9 +32,26 @@ export function LoginPage() {
 
   return (
     <div className="auth-page">
-      <form className="card auth-card" onSubmit={submit}>
-        <h1>Student Services</h1>
-        <p className="muted">Sign in with your institutional account.</p>
+      <aside className="auth-brand">
+        <div className="brand">
+          <span className="brand-mark">
+            <span>SS</span>
+          </span>
+          <span className="brand-text">
+            <strong>STUDENT</strong>
+            <small>SERVICES PORTAL</small>
+          </span>
+        </div>
+        <div className="auth-pitch">
+          <h2>Registration, records, fees and requests in one place.</h2>
+          <p>For students, academic staff and student operations teams.</p>
+        </div>
+        <small className="auth-foot">Team Karisimbi</small>
+      </aside>
+      <form className="auth-card" onSubmit={submit}>
+        <span className="eyebrow">WELCOME BACK</span>
+        <h1>Sign in</h1>
+        <p className="muted">Use your institutional email and password.</p>
         <ErrorNotice error={error} />
         <Field label="Email">
           <input type="email" value={email} onChange={(e) => setEmail(e.target.value)} required autoFocus />
