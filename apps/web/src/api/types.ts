@@ -120,3 +120,44 @@ export interface Page<T> {
   items: T[]
   nextCursor: string | null
 }
+
+export interface DashboardData {
+  role: Role
+  structure?: { faculties: number; departments: number; programs: number }
+  students?: {
+    total: number
+    currentIntakeYear: number
+    currentIntake: number
+    byStatus: Record<StudentStatus, number>
+    byProgram: { programId: string; code?: string; name?: string; count: number }[]
+    recent?: {
+      id: string
+      registrationNumber: string | null
+      firstName: string
+      lastName: string
+      createdAt: string
+      program: { code: string }
+    }[]
+  }
+  users?: {
+    active: number
+    inactive: number
+    pendingPasswordChange: number
+    activeByRole: Record<Role, number>
+  }
+  recentActivity?: {
+    id: string
+    action: string
+    entity: string
+    createdAt: string
+    actor: { fullName: string } | null
+  }[]
+  myRecord?: {
+    id: string
+    registrationNumber: string | null
+    status: StudentStatus
+    yearOfStudy: number
+    intakeYear: number
+    program: { code: string; name: string; durationYears: number }
+  } | null
+}
