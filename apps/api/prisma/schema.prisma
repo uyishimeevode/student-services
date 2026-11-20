@@ -1,0 +1,133 @@
+generator client {
+  provider            = "prisma-client"
+  output              = "../src/generated/prisma"
+  moduleFormat        = "esm"
+  importFileExtension = "js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// Access groups: Student Access, Academic Delivery, Student Operations, System Control
+enum Role {
+  STUDENT
+  LECTURER
+  HEAD_OF_DEPARTMENT
+  DEAN
+  ADMISSIONS_OFFICER
+  REGISTRAR
+  FINANCE_OFFICER
+  STUDENT_SERVICES_OFFICER
+  SYSTEM_ADMINISTRATOR
+}
+
+enum Gender {
+  MALE
+  FEMALE
+}
+
+enum StudentStatus {
+  ACTIVE
+  SUSPENDED
+  WITHDRAWN
+  GRADUATED
+}
+
+model User {
+  id           String   @id @default(uuid()) @db.Uuid
+  email        String   @unique
+  passwordHash String   @map("password_hash")
+  fullName     String   @map("full_name")
+  role         Role
+  isActive           Boolean     @default(true) @map("is_active")
+  mustChangePassword Boolean     @default(false) @map("must_change_password")
+  // Head of Department is scoped to a department, Dean to a faculty
+  departmentId       String?     @map("department_id") @db.Uuid
+  department         Department? @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  facultyId          String?     @map("faculty_id") @db.Uuid
+  faculty            Faculty?    @relation(fields: [facultyId], references: [id], onDelete: SetNull)
+  createdAt          DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  student            Student?
+  auditLogs          AuditLog[]
+
+  @@map("users")
+}
+
+model Faculty {
+  id          String       @id @default(uuid()) @db.Uuid
+  code        String       @unique
+  name        String       @unique
+  createdAt   DateTime     @default(now()) @map("created_at") @db.Timestamptz
+  departments Department[]
+  users       User[]
+
+  @@map("faculties")
+}
+
+model Department {
+  id        String    @id @default(uuid()) @db.Uuid
+  code      String    @unique
+  name      String    @unique
+  facultyId String    @map("faculty_id") @db.Uuid
+  faculty   Faculty   @relation(fields: [facultyId], references: [id], onDelete: Restrict)
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  programs  Program[]
+  users     User[]
+
+  @@map("departments")
+}
+
+model Program {
+  id            String     @id @default(uuid()) @db.Uuid
+  code          String     @unique
+  name          String
+  durationYears Int        @map("duration_years")
+  departmentId  String     @map("department_id") @db.Uuid
+  department    Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
+  students      Student[]
+
+  @@map("programs")
+}
+
+model Student {
+  id                 String        @id @default(uuid()) @db.Uuid
+  sequence           Int           @unique @default(autoincrement())
+  registrationNumber String?       @unique @map("registration_number")
+  firstName          String        @map("first_name")
+  lastName           String        @map("last_name")
+  gender             Gender
+  dateOfBirth        DateTime      @map("date_of_birth") @db.Date
+  phone              String
+  address            String?
+  intakeYear         Int           @map("intake_year")
+  yearOfStudy        Int           @default(1) @map("year_of_study")
+  status             StudentStatus @default(ACTIVE)
+  programId          String        @map("program_id") @db.Uuid
+  program            Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
+  userId             String        @unique @map("user_id") @db.Uuid
+  user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([lastName, firstName])
+  @@index([programId])
+  @@map("students")
+}
+
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  actorId   String?  @map("actor_id") @db.Uuid
+  actor     User?    @relation(fields: [actorId], references: [id], onDelete: SetNull)
+  action    String
+  entity    String
+  entityId  String?  @map("entity_id")
+  details   Json?
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  @@index([createdAt])
+  @@index([entity, entityId])
+  @@map("audit_logs")
+}
