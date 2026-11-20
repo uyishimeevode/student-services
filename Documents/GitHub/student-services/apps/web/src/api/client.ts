@@ -81,3 +81,12 @@ export function query(params: Record<string, string | number | undefined | null>
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : 'Something went wrong'
 }
+
+export function initials(name: string): string {
+  return name
+    .split(/\s+/)
+    .filter(Boolean)
+    .slice(0, 2)
+    .map((part) => part[0]!.toUpperCase())
+    .join('')
+}

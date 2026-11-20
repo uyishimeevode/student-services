@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { api, query, errorMessage } from '../api/client'
 import type { Page, Program, Student, StudentStatus } from '../api/types'
 import { ErrorNotice } from '../components/Field'
@@ -7,7 +7,8 @@ import { ErrorNotice } from '../components/Field'
 const STATUSES: StudentStatus[] = ['ACTIVE', 'SUSPENDED', 'WITHDRAWN', 'GRADUATED']
 
 export function StudentsPage() {
-  const [search, setSearch] = useState('')
+  const [params] = useSearchParams()
+  const [search, setSearch] = useState(params.get('search') ?? '')
   const [status, setStatus] = useState('')
   const [programId, setProgramId] = useState('')
   const [programs, setPrograms] = useState<Program[]>([])
@@ -32,6 +33,11 @@ export function StudentsPage() {
     },
     [search, status, programId],
   )
+
+  // The top bar search opens this page with ?search=; follow it when it changes.
+  useEffect(() => {
+    setSearch(params.get('search') ?? '')
+  }, [params])
 
   useEffect(() => {
     api<Program[]>('/programs').then(setPrograms).catch(() => setPrograms([]))
