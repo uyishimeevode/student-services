@@ -226,7 +226,7 @@ export class StudentsService {
   }
 
   /** Heads of Department list their department only, Deans their faculty; other permitted roles see everyone. */
-  private scopeFor(actor: AuthUser): Prisma.StudentWhereInput {
+  scopeFor(actor: AuthUser): Prisma.StudentWhereInput {
     if (actor.role === Role.HEAD_OF_DEPARTMENT)
       return { program: { departmentId: actor.departmentId ?? '' } };
     if (actor.role === Role.DEAN)
