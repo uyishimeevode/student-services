@@ -7,5 +7,6 @@ import { StudentsService } from './students.service.js';
   imports: [AuthModule],
   controllers: [StudentsController],
   providers: [StudentsService],
+  exports: [StudentsService],
 })
 export class StudentsModule {}
