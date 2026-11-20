@@ -90,8 +90,18 @@ function fakePrisma(users: FakeUser[]) {
         ),
       findMany: async () => users.map(({ passwordHash: _hash, ...u }) => u),
       update: async () => ({}),
+      groupBy: async () => [],
+      count: async () => 0,
     },
-    student: { findMany: async () => [], findUnique: async () => null },
+    student: {
+      findMany: async () => [],
+      findUnique: async () => null,
+      groupBy: async () => [],
+      count: async () => 0,
+    },
+    faculty: { count: async () => 0 },
+    department: { count: async () => 0 },
+    program: { count: async () => 0, findMany: async () => [] },
     auditLog: { create: async () => ({}), findMany: async () => [] },
     $transaction: async (fn: (tx: unknown) => unknown) => fn(fake),
     $queryRaw: async () => [{ '?column?': 1 }],
@@ -211,6 +221,23 @@ describe('Student Services API (e2e)', () => {
       .send({ firstName: 'Aline' })
       .expect(400);
     expect(JSON.stringify(res.body)).toContain('programId');
+  });
+
+  it('returns a dashboard shaped for the role', async () => {
+    const admin = await signIn('admin@test.local');
+    const registrar = await signIn('registrar@test.local');
+    const adminView = await request(app.getHttpServer())
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${admin}`)
+      .expect(200);
+    const registrarView = await request(app.getHttpServer())
+      .get('/api/dashboard')
+      .set('Authorization', `Bearer ${registrar}`)
+      .expect(200);
+    expect(adminView.body.users).toBeDefined();
+    expect(adminView.body.students).toBeUndefined();
+    expect(registrarView.body.students.total).toBe(0);
+    expect(registrarView.body.users).toBeUndefined();
   });
 
   it('lets the Registrar list students', async () => {

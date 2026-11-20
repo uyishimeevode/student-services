@@ -97,6 +97,7 @@ All routes except sign-in and health need `Authorization: Bearer <token>`.
 | --- | --- | --- |
 | POST | /api/auth/sign-in | Public |
 | GET | /api/auth/me | Signed in |
+| GET | /api/dashboard | Signed in (sections depend on role) |
 | POST | /api/auth/change-password | Signed in |
 | GET, POST | /api/users | System Administrator |
 | GET, PATCH | /api/users/:id | System Administrator |
