@@ -5,7 +5,13 @@ import { AuthorizationModule } from '@nestjs/authorization';
 import { AcademicsModule } from './academics/academics.module.js';
 import { AuditModule } from './audit/audit.module.js';
 import { AuthModule } from './auth/auth.module.js';
+import { AdmissionsModule } from './admissions/admissions.module.js';
+import { CoursesModule } from './courses/courses.module.js';
 import { DashboardModule } from './dashboard/dashboard.module.js';
+import { ExamsModule } from './exams/exams.module.js';
+import { FinanceModule } from './finance/finance.module.js';
+import { ReportsModule } from './reports/reports.module.js';
+import { RequestsModule } from './requests/requests.module.js';
 import { AccessPolicy } from './common/access.policy.js';
 import { validateEnv } from './config/env.js';
 import { HealthController } from './health/health.controller.js';
@@ -31,6 +37,12 @@ import { UsersModule } from './users/users.module.js';
     UsersModule,
     AcademicsModule,
     StudentsModule,
+    CoursesModule,
+    FinanceModule,
+    RequestsModule,
+    AdmissionsModule,
+    ReportsModule,
+    ExamsModule,
     DashboardModule,
   ],
   controllers: [HealthController],
