@@ -10,7 +10,7 @@
 # Change the host if your Render service URL is different.
 [[redirects]]
   from = "/api/*"
-  to = "https://student-services-api.onrender.com/api/:splat"
+  to = "https://student-services-g08e.onrender.com/api/:splat"
   status = 200
   force = true
 
