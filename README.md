@@ -39,21 +39,29 @@ docker-compose.yml     PostgreSQL + API + web
 .github/workflows/     CI
 ```
 
-## Roles
+## Roles and modules
 
-| Access group | Role | Release 1 access |
+| Access group | Role | What they can do |
 | --- | --- | --- |
-| Student Access | Student | Own record |
-| Academic Delivery | Lecturer | Academic structure |
-| Academic Delivery | Head of Department | Students in own department |
-| Academic Delivery | Dean | Students in own faculty |
-| Student Operations | Admissions Officer | Register and view students |
-| Student Operations | Registrar | Register, view, update students, change status, manage structure |
-| Student Operations | Finance Officer | View students |
-| Student Operations | Student Services Officer | View students |
-| System Control | System Administrator | Users, roles, structure, audit log |
+| Student Access | Student | Register courses, see approved grades and GPA, view materials, see fees and record payments, submit requests |
+| Academic Delivery | Lecturer | Class lists, attendance, enter and submit grades, share materials |
+| Academic Delivery | Head of Department | Course catalogue and lecturer assignment for their department, approve or return grades, department students and reports, teach |
+| Academic Delivery | Dean | Faculty students, department performance reports, CSV export |
+| Student Operations | Admissions Officer | Review applications, verify documents, issue offers, enrol applicants as students, register students |
+| Student Operations | Registrar | Academic terms and course registration window, official records and status, transcripts, courses, service requests, reports |
+| Student Operations | Finance Officer | Bill a student or a whole class, verify or reject payments, waivers, collection report |
+| Student Operations | Student Services Officer | Triage and resolve requests, issue letters, book appointments, transcripts |
+| System Control | System Administrator | Users and roles, academic structure, audit log |
 
-Permissions are defined in `apps/api/src/common/permissions.ts`. Courses, grades, fees and requests add their permissions there in later releases.
+Applicants apply without an account at `/apply`. Permissions are defined in `apps/api/src/common/permissions.ts`.
+
+## Demo data
+
+`npm run db:seed:demo` (in `apps/api`) adds one account per role, two terms, courses, classes, students with grades and attendance, invoices and payments, requests and applications. Every demo account uses the password `Demo1234!`:
+
+`registrar@demo.rw`, `admissions@demo.rw`, `finance@demo.rw`, `services@demo.rw`, `hod@demo.rw`, `dean@demo.rw`, `lecturer@demo.rw`, `lecturer2@demo.rw`, `student@demo.rw`
+
+Do not run the demo seed on a production database.
 
 ## Run locally
 
@@ -67,8 +75,8 @@ docker compose up -d db
 cd apps/api
 cp .env.example .env              # set JWT_SECRET (openssl rand -base64 32)
 npm install                       # runs prisma generate
-npx prisma migrate dev --name init_student_registration   # first time only
-npm run db:seed
+npx prisma migrate deploy        # applies every migration in prisma/migrations
+npm run db:seed:demo              # admin, structure and demo data; use db:seed for admin only
 npm run start:dev                 # http://localhost:3000
 
 # 3. Web, in another terminal
@@ -91,29 +99,28 @@ Web: http://localhost:8080. API: http://localhost:3000. The API applies pending 
 
 ## API
 
-All routes except sign-in and health need `Authorization: Bearer <token>`.
+All routes except sign-in, health and the public admissions routes need `Authorization: Bearer <token>`.
 
-| Method | Path | Who |
-| --- | --- | --- |
-| POST | /api/auth/sign-in | Public |
-| GET | /api/auth/me | Signed in |
-| GET | /api/dashboard | Signed in (sections depend on role) |
-| POST | /api/auth/change-password | Signed in |
-| GET, POST | /api/users | System Administrator |
-| GET, PATCH | /api/users/:id | System Administrator |
-| POST | /api/users/:id/reset-password | System Administrator |
-| GET | /api/faculties, /api/departments, /api/programs | Staff and students |
-| POST | /api/faculties, /api/departments, /api/programs | Registrar, System Administrator |
-| POST | /api/students | Registrar, Admissions Officer |
-| GET | /api/students | Staff with student access (scoped for HoD and Dean) |
-| GET | /api/students/me | Student |
-| GET | /api/students/:id | Staff with access, or the student |
-| PATCH | /api/students/:id | Registrar |
-| PATCH | /api/students/:id/status | Registrar |
-| GET | /api/audit-logs | System Administrator |
-| GET | /health, /health/ready | Public |
+| Area | Routes |
+| --- | --- |
+| Auth | `POST /api/auth/sign-in`, `GET /api/auth/me`, `POST /api/auth/change-password` |
+| Dashboard | `GET /api/dashboard` (sections depend on role) |
+| Users | `GET, POST /api/users`, `GET, PATCH /api/users/:id`, `POST /api/users/:id/reset-password` |
+| Structure | `GET, POST /api/faculties`, `/api/departments`, `/api/programs`, `/api/courses` |
+| Terms | `GET, POST /api/terms`, `GET /api/terms/current`, `PATCH /api/terms/:id` |
+| Students | `GET, POST /api/students`, `GET /api/students/me`, `GET, PATCH /api/students/:id`, `PATCH /api/students/:id/status`, `GET /api/students/:id/transcript` |
+| Classes | `GET, POST /api/offerings`, `GET /api/offerings/lecturers`, `PATCH /api/offerings/:id/lecturer` |
+| Teaching | `GET /api/teaching/classes`, `GET /api/teaching/classes/:id`, `POST .../attendance`, `PUT .../grades`, `POST, DELETE .../materials` |
+| Grade approval | `GET /api/grade-approvals`, `POST /api/grade-approvals/:offeringId` |
+| Student portal | `GET, POST /api/my/courses`, `DELETE /api/my/courses/:enrollmentId`, `GET /api/my/grades`, `GET /api/my/materials`, `GET /api/my/fees`, `POST /api/my/fees/:invoiceId/payments`, `GET, POST /api/my/requests` |
+| Finance | `GET, POST /api/finance/invoices`, `PATCH /api/finance/invoices/:id/waiver`, `GET /api/finance/payments`, `PATCH /api/finance/payments/:id`, `GET /api/finance/report` |
+| Requests | `GET /api/requests`, `GET, PATCH /api/requests/:id` |
+| Admissions | `GET /api/public/programs`, `POST /api/public/applications`, `GET /api/applications`, `GET, PATCH /api/applications/:id`, `POST /api/applications/:id/enroll` |
+| Reports | `GET /api/reports/overview`, `GET /api/reports/students.csv` |
+| Audit | `GET /api/audit-logs` |
+| Health | `GET /health`, `GET /health/ready` |
 
-Registering a student creates the login and the record in one transaction, assigns a registration number (intake year + 5-digit sequence, e.g. `202600012`) and returns a one-time temporary password.
+Grades: A 80 and above, B 70, C 60, D 50, F below 50; GPA on a 4-point scale weighted by credits. Students only see grades after the Head of Department approves them. Amounts are whole Rwandan francs.
 
 ## CI
 
