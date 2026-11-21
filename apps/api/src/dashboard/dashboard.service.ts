@@ -1,5 +1,15 @@
 import { Injectable } from '@nestjs/common';
-import { Role, StudentStatus } from '../generated/prisma/enums.js';
+import {
+  ApplicationStatus,
+  EnrollmentStatus,
+  GradeStatus,
+  PaymentStatus,
+  RequestStatus,
+  Role,
+  StudentStatus,
+} from '../generated/prisma/enums.js';
+import { PASS_MARK } from '../courses/grading.js';
+import { FinanceService, invoiceTotals } from '../finance/finance.service.js';
 import type { AuthUser } from '../common/auth-user.js';
 import { hasPermission, Permission } from '../common/permissions.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -21,32 +31,59 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly students: StudentsService,
+    private readonly finance: FinanceService,
   ) {}
 
   async forUser(user: AuthUser) {
-    const [structure, students, users, recentActivity, myRecord] =
-      await Promise.all([
-        hasPermission(user.role, Permission.ViewStructure)
-          ? this.structureCounts()
-          : undefined,
-        hasPermission(user.role, Permission.ViewStudents)
-          ? this.studentFigures(user)
-          : undefined,
-        hasPermission(user.role, Permission.ManageUsers)
-          ? this.userFigures()
-          : undefined,
-        hasPermission(user.role, Permission.ViewAuditLogs)
-          ? this.recentActivity()
-          : undefined,
-        user.role === Role.STUDENT ? this.myRecord(user) : undefined,
-      ]);
-    return {
-      role: user.role,
+    const can = (p: Permission) => hasPermission(user.role, p);
+    const [
+      term,
       structure,
       students,
       users,
       recentActivity,
       myRecord,
+      teaching,
+      approvals,
+      finance,
+      requests,
+      admissions,
+      studentPortal,
+    ] = await Promise.all([
+      this.prisma.academicTerm.findFirst({ where: { isCurrent: true } }),
+      can(Permission.ViewStructure) ? this.structureCounts() : undefined,
+      can(Permission.ViewStudents) ? this.studentFigures(user) : undefined,
+      can(Permission.ManageUsers) ? this.userFigures() : undefined,
+      can(Permission.ViewAuditLogs) ? this.recentActivity() : undefined,
+      user.role === Role.STUDENT ? this.myRecord(user) : undefined,
+      can(Permission.Teach) ? this.teachingFigures(user) : undefined,
+      can(Permission.ApproveGrades) ? this.approvalFigures(user) : undefined,
+      can(Permission.ManageFinance) ? this.financeFigures() : undefined,
+      can(Permission.ManageRequests) ? this.requestFigures(user) : undefined,
+      can(Permission.ManageApplications) ? this.admissionFigures() : undefined,
+      user.role === Role.STUDENT ? this.studentPortalFigures(user) : undefined,
+    ]);
+    const myActivity = await this.prisma.auditLog.findMany({
+      where: { actorId: user.id, NOT: { action: 'auth.sign_in' } },
+      orderBy: { createdAt: 'desc' },
+      take: RECENT_LIMIT,
+      select: { id: true, action: true, entity: true, createdAt: true },
+    });
+    return {
+      role: user.role,
+      term,
+      structure,
+      students,
+      users,
+      recentActivity,
+      myRecord,
+      teaching,
+      approvals,
+      finance,
+      requests,
+      admissions,
+      studentPortal,
+      myActivity,
     };
   }
 
@@ -136,6 +173,7 @@ export class DashboardService {
       byStatus,
       byProgram,
       recent,
+      atRisk: await this.atRisk(where),
     };
   }
 
@@ -195,5 +233,264 @@ export class DashboardService {
         program: { select: { code: true, name: true, durationYears: true } },
       },
     });
+  }
+
+  private async teachingFigures(user: AuthUser) {
+    const classes = await this.prisma.courseOffering.findMany({
+      where: { lecturerId: user.id, term: { isCurrent: true } },
+      orderBy: { course: { code: 'asc' } },
+      select: {
+        id: true,
+        gradeStatus: true,
+        course: { select: { code: true, title: true } },
+        _count: {
+          select: {
+            enrollments: { where: { status: EnrollmentStatus.REGISTERED } },
+            sessions: true,
+          },
+        },
+      },
+    });
+    const open: GradeStatus[] = [GradeStatus.DRAFT, GradeStatus.RETURNED];
+    const inMyClasses = {
+      session: { offering: { lecturerId: user.id, term: { isCurrent: true } } },
+    };
+    const [records, present] = await Promise.all([
+      this.prisma.attendanceRecord.count({ where: inMyClasses }),
+      this.prisma.attendanceRecord.count({
+        where: { ...inMyClasses, present: true },
+      }),
+    ]);
+    return {
+      classes,
+      classCount: classes.length,
+      studentCount: classes.reduce((s, c) => s + c._count.enrollments, 0),
+      sessionCount: classes.reduce((s, c) => s + c._count.sessions, 0),
+      gradesOutstanding: classes.filter(
+        (c) => open.includes(c.gradeStatus) && c._count.enrollments > 0,
+      ).length,
+      returned: classes.filter((c) => c.gradeStatus === GradeStatus.RETURNED)
+        .length,
+      averageAttendance: records ? Math.round((present / records) * 100) : null,
+    };
+  }
+
+  private async approvalFigures(user: AuthUser) {
+    const pending = await this.prisma.courseOffering.findMany({
+      where: {
+        gradeStatus: GradeStatus.SUBMITTED,
+        course: { program: { departmentId: user.departmentId ?? '' } },
+      },
+      take: RECENT_LIMIT,
+      select: {
+        id: true,
+        course: { select: { code: true, title: true } },
+        lecturer: { select: { fullName: true } },
+        _count: {
+          select: {
+            enrollments: { where: { status: EnrollmentStatus.REGISTERED } },
+          },
+        },
+      },
+    });
+    const unassigned = await this.prisma.courseOffering.count({
+      where: {
+        lecturerId: null,
+        term: { isCurrent: true },
+        course: { program: { departmentId: user.departmentId ?? '' } },
+      },
+    });
+    return { pending, pendingCount: pending.length, unassigned };
+  }
+
+  private async financeFigures() {
+    const [report, pendingPayments] = await Promise.all([
+      this.finance.report(),
+      this.prisma.payment.findMany({
+        where: { status: PaymentStatus.PENDING },
+        orderBy: { createdAt: 'asc' },
+        take: RECENT_LIMIT,
+        select: {
+          id: true,
+          amount: true,
+          method: true,
+          reference: true,
+          createdAt: true,
+          invoice: {
+            select: {
+              student: {
+                select: {
+                  firstName: true,
+                  lastName: true,
+                  registrationNumber: true,
+                },
+              },
+            },
+          },
+        },
+      }),
+    ]);
+    const pendingCount = await this.prisma.payment.count({
+      where: { status: PaymentStatus.PENDING },
+    });
+    return {
+      ...report.totals,
+      collectionRate: report.collectionRate,
+      pendingPayments,
+      pendingCount,
+    };
+  }
+
+  private async requestFigures(user: AuthUser) {
+    const [groups, unassigned, mine, upcoming] = await Promise.all([
+      this.prisma.serviceRequest.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.serviceRequest.count({
+        where: { assignedToId: null, status: RequestStatus.OPEN },
+      }),
+      this.prisma.serviceRequest.count({
+        where: { assignedToId: user.id, status: RequestStatus.IN_PROGRESS },
+      }),
+      this.prisma.serviceRequest.findMany({
+        where: {
+          appointmentAt: { gte: new Date() },
+          status: { in: [RequestStatus.OPEN, RequestStatus.IN_PROGRESS] },
+        },
+        orderBy: { appointmentAt: 'asc' },
+        take: RECENT_LIMIT,
+        select: {
+          id: true,
+          subject: true,
+          appointmentAt: true,
+          student: { select: { firstName: true, lastName: true } },
+        },
+      }),
+    ]);
+    const byStatus = Object.fromEntries(
+      Object.values(RequestStatus).map((s) => [s, 0]),
+    ) as Record<RequestStatus, number>;
+    for (const g of groups) byStatus[g.status] = g._count._all;
+    const queue = await this.prisma.serviceRequest.findMany({
+      where: {
+        status: { in: [RequestStatus.OPEN, RequestStatus.IN_PROGRESS] },
+      },
+      orderBy: { createdAt: 'asc' },
+      take: RECENT_LIMIT,
+      select: {
+        id: true,
+        type: true,
+        subject: true,
+        status: true,
+        createdAt: true,
+        student: { select: { firstName: true, lastName: true } },
+      },
+    });
+    return { byStatus, unassigned, mine, upcoming, queue };
+  }
+
+  private async admissionFigures() {
+    const [groups, latest] = await Promise.all([
+      this.prisma.application.groupBy({
+        by: ['status'],
+        _count: { _all: true },
+      }),
+      this.prisma.application.findMany({
+        where: {
+          status: {
+            in: [ApplicationStatus.SUBMITTED, ApplicationStatus.UNDER_REVIEW],
+          },
+        },
+        orderBy: { createdAt: 'asc' },
+        take: RECENT_LIMIT,
+        select: {
+          id: true,
+          firstName: true,
+          lastName: true,
+          status: true,
+          createdAt: true,
+          program: { select: { code: true } },
+        },
+      }),
+    ]);
+    const byStatus = Object.fromEntries(
+      Object.values(ApplicationStatus).map((s) => [s, 0]),
+    ) as Record<ApplicationStatus, number>;
+    for (const g of groups) byStatus[g.status] = g._count._all;
+    return { byStatus, latest };
+  }
+
+  private async studentPortalFigures(user: AuthUser) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId: user.id },
+      select: { id: true },
+    });
+    if (!student) return null;
+    const [enrollments, invoices, openRequests] = await Promise.all([
+      this.prisma.enrollment.findMany({
+        where: {
+          studentId: student.id,
+          status: EnrollmentStatus.REGISTERED,
+          offering: { term: { isCurrent: true } },
+        },
+        select: {
+          offering: { select: { course: { select: { credits: true } } } },
+        },
+      }),
+      this.prisma.invoice.findMany({
+        where: { studentId: student.id },
+        select: {
+          amount: true,
+          waiverAmount: true,
+          payments: { select: { amount: true, status: true } },
+        },
+      }),
+      this.prisma.serviceRequest.count({
+        where: {
+          studentId: student.id,
+          status: { in: [RequestStatus.OPEN, RequestStatus.IN_PROGRESS] },
+        },
+      }),
+    ]);
+    const balance = invoices.reduce((s, i) => s + invoiceTotals(i).balance, 0);
+    return {
+      registeredCourses: enrollments.length,
+      registeredCredits: enrollments.reduce(
+        (s, e) => s + e.offering.course.credits,
+        0,
+      ),
+      feeBalance: balance,
+      openRequests,
+    };
+  }
+
+  /**
+   * Students in scope who need attention this term: a score below the pass mark,
+   * or attendance under 75% once at least three sessions are recorded.
+   */
+  private async atRisk(scope: object) {
+    const enrollments = await this.prisma.enrollment.findMany({
+      where: {
+        status: EnrollmentStatus.REGISTERED,
+        student: scope,
+        offering: { term: { isCurrent: true } },
+      },
+      select: {
+        studentId: true,
+        score: true,
+        attendance: { select: { present: true } },
+      },
+    });
+    const flagged = new Set<string>();
+    for (const e of enrollments) {
+      const lowScore = e.score !== null && e.score < PASS_MARK;
+      const sessions = e.attendance.length;
+      const lowAttendance =
+        sessions >= 3 &&
+        e.attendance.filter((a) => a.present).length / sessions < 0.75;
+      if (lowScore || lowAttendance) flagged.add(e.studentId);
+    }
+    return flagged.size;
   }
 }
