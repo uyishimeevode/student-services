@@ -90,3 +90,32 @@ export function initials(name: string): string {
     .map((part) => part[0]!.toUpperCase())
     .join('')
 }
+
+const rwf = new Intl.NumberFormat('en-RW', { maximumFractionDigits: 0 })
+
+/** Amounts are whole Rwandan francs. */
+export function money(amount: number): string {
+  return `RWF ${rwf.format(amount)}`
+}
+
+export function formatDate(value: string, withTime = false): string {
+  return new Date(value).toLocaleDateString(undefined, {
+    day: 'numeric',
+    month: 'short',
+    year: 'numeric',
+    ...(withTime ? { hour: '2-digit', minute: '2-digit' } : {}),
+  })
+}
+
+/** Downloads a file from the API with the signed-in user's token. */
+export async function download(path: string, filename: string) {
+  const token = getToken()
+  const res = await fetch(`${BASE_URL}${path}`, { headers: token ? { Authorization: `Bearer ${token}` } : {} })
+  if (!res.ok) throw new ApiError(res.status, `Download failed (${res.status})`)
+  const url = URL.createObjectURL(await res.blob())
+  const link = document.createElement('a')
+  link.href = url
+  link.download = filename
+  link.click()
+  URL.revokeObjectURL(url)
+}
