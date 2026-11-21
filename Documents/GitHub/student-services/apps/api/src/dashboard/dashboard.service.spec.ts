@@ -60,8 +60,31 @@ function setup() {
           : {},
       ),
   };
+  const finance = {
+    report: vi
+      .fn()
+      .mockResolvedValue({ totals: {}, collectionRate: 0, byProgram: [] }),
+  };
+  Object.assign(prisma, {
+    academicTerm: { findFirst: vi.fn().mockResolvedValue(null) },
+    serviceRequest: {
+      groupBy: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+      findMany: vi.fn().mockResolvedValue([]),
+    },
+    enrollment: { findMany: vi.fn().mockResolvedValue([]) },
+    courseOffering: {
+      findMany: vi.fn().mockResolvedValue([]),
+      count: vi.fn().mockResolvedValue(0),
+    },
+    invoice: { findMany: vi.fn().mockResolvedValue([]) },
+  });
   return {
-    service: new DashboardService(prisma as never, students as never),
+    service: new DashboardService(
+      prisma as never,
+      students as never,
+      finance as never,
+    ),
     prisma,
   };
 }
@@ -113,7 +136,7 @@ describe('DashboardService', () => {
     });
   });
 
-  it('gives a student only their own record and the structure', async () => {
+  it('gives a student only their own record', async () => {
     const { service } = setup();
     const result = await service.forUser(user(Role.STUDENT));
 

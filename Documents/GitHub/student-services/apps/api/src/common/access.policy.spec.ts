@@ -52,6 +52,11 @@ describe('AccessPolicy', () => {
     expect(allowed).toEqual([Role.REGISTRAR]);
   });
 
+  it('keeps the academic structure pages for staff only', () => {
+    expect(policy.viewStructure(user(Role.STUDENT))).toBe(false);
+    expect(policy.viewStructure(user(Role.LECTURER))).toBe(true);
+  });
+
   it('denies a guest everything', () => {
     expect(policy.viewStructure(null)).toBe(false);
     expect(policy.listStudents(null)).toBe(false);
