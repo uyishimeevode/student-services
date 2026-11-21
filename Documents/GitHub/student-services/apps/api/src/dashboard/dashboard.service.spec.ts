@@ -73,6 +73,7 @@ function setup() {
       findMany: vi.fn().mockResolvedValue([]),
     },
     enrollment: { findMany: vi.fn().mockResolvedValue([]) },
+    attendanceRecord: { count: vi.fn().mockResolvedValue(0) },
     courseOffering: {
       findMany: vi.fn().mockResolvedValue([]),
       count: vi.fn().mockResolvedValue(0),
