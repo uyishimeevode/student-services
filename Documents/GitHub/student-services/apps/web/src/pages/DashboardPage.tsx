@@ -1,6 +1,12 @@
 import type { LucideIcon } from 'lucide-react'
 import {
   ArrowRight,
+  BookOpen as BookIcon,
+  ClipboardCheck,
+  FileUser,
+  Inbox,
+  Presentation,
+  Wallet,
   BookOpen,
   Building2,
   CalendarDays,
@@ -14,12 +20,13 @@ import {
   TriangleAlert,
   UserPlus,
   Users,
+  UserCheck as UserCheckIcon,
   UserX,
 } from 'lucide-react'
 import { useEffect, useState, type ReactNode } from 'react'
 import { Link } from 'react-router-dom'
-import { api, errorMessage, initials } from '../api/client'
-import { ROLE_LABELS, type DashboardData, type Role, type StudentStatus } from '../api/types'
+import { api, errorMessage, initials, money } from '../api/client'
+import { ROLE_LABELS, type DashboardData, type Permission, type Role, type StudentStatus } from '../api/types'
 import { useAuth } from '../auth/AuthContext'
 import { ErrorNotice } from '../components/Field'
 
@@ -49,14 +56,14 @@ interface Queue {
 }
 
 const ROLE_SUBTITLES: Record<Role, string> = {
-  STUDENT: 'Follow your registration, programme and status.',
-  LECTURER: 'Your classes, attendance and grades will appear here as those modules are released.',
-  HEAD_OF_DEPARTMENT: 'Oversee students and programmes in your department.',
-  DEAN: 'Oversee students and departments across your faculty.',
-  ADMISSIONS_OFFICER: 'Register admitted students and follow new intakes.',
-  REGISTRAR: 'Manage registration, official student records and status changes.',
-  FINANCE_OFFICER: 'Look up student records. Invoices and payments arrive with the fees module.',
-  STUDENT_SERVICES_OFFICER: 'Look up student records. Requests and appointments arrive with the requests module.',
+  STUDENT: 'Register courses, follow your grades, pay fees and send requests.',
+  LECTURER: 'Manage your class lists, attendance, grades and course materials.',
+  HEAD_OF_DEPARTMENT: 'Assign lecturers, approve grades and follow students in your department.',
+  DEAN: 'Follow departments, results and students across your faculty.',
+  ADMISSIONS_OFFICER: 'Review applications, verify documents, issue offers and enrol new students.',
+  REGISTRAR: 'Manage terms, registration, official student records and transcripts.',
+  FINANCE_OFFICER: 'Bill students, verify payments, apply waivers and follow collections.',
+  STUDENT_SERVICES_OFFICER: 'Triage student requests, issue letters and manage appointments.',
   SYSTEM_ADMINISTRATOR: 'Manage accounts, roles, academic structure and the audit trail.',
 }
 
@@ -85,11 +92,65 @@ function shortDate(value: string): string {
 function statCards(data: DashboardData): StatCard[] {
   if (data.myRecord) {
     const r = data.myRecord
+    const p = data.studentPortal
     return [
-      { label: 'Registration', value: r.registrationNumber ?? '-', hint: `Intake ${r.intakeYear}`, icon: IdCard, tone: 'green' },
-      { label: 'Programme', value: r.program.code, hint: r.program.name, icon: BookOpen, tone: 'amber' },
-      { label: 'Year of study', value: `${r.yearOfStudy} / ${r.program.durationYears}`, hint: 'Current year', icon: CalendarDays, tone: 'blue' },
-      { label: 'Status', value: titleCase(r.status), hint: 'Registry status', icon: CircleCheck, tone: 'purple' },
+      { label: 'Registration', value: r.registrationNumber ?? '-', hint: `${r.program.code} · year ${r.yearOfStudy} of ${r.program.durationYears}`, icon: IdCard, tone: 'green' },
+      { label: 'Courses this term', value: p?.registeredCourses ?? 0, hint: `${p?.registeredCredits ?? 0} credits`, icon: BookOpen, tone: 'amber' },
+      { label: 'Fee balance', value: money(p?.feeBalance ?? 0), hint: p?.feeBalance ? 'To pay' : 'Nothing owed', icon: Wallet, tone: 'blue' },
+      { label: 'Status', value: titleCase(r.status), hint: `${p?.openRequests ?? 0} open requests`, icon: CircleCheck, tone: 'purple' },
+    ]
+  }
+  if (data.approvals) {
+    return [
+      { label: 'Students', value: data.students?.total ?? 0, hint: 'In your department', icon: GraduationCap, tone: 'green' },
+      { label: 'Awaiting approval', value: data.approvals.pendingCount, hint: 'Submitted grade sheets', icon: ClipboardCheck, tone: 'amber' },
+      { label: 'Unassigned classes', value: data.approvals.unassigned, hint: 'Need a lecturer', icon: Presentation, tone: 'blue' },
+      { label: 'At-risk students', value: data.students?.atRisk ?? 0, hint: 'Low scores or attendance', icon: TriangleAlert, tone: 'purple' },
+    ]
+  }
+  if (data.teaching) {
+    const t = data.teaching
+    return [
+      { label: 'Classes', value: t.classCount, hint: data.term?.name ?? 'This term', icon: Presentation, tone: 'green' },
+      { label: 'Students', value: t.studentCount, hint: 'Across your classes', icon: Users, tone: 'amber' },
+      { label: 'Grading', value: t.gradesOutstanding, hint: t.returned ? `${t.returned} returned to you` : 'Classes not yet submitted', icon: ClipboardCheck, tone: 'blue' },
+      { label: 'Avg attendance', value: t.averageAttendance === null ? '-' : `${t.averageAttendance}%`, hint: `${t.sessionCount} sessions recorded`, icon: CalendarDays, tone: 'purple' },
+    ]
+  }
+  if (data.finance) {
+    const f = data.finance
+    return [
+      { label: 'Billed', value: money(f.billed), hint: `${f.invoices} invoices`, icon: Wallet, tone: 'green' },
+      { label: 'Collected', value: money(f.collected), hint: `${f.collectionRate}% of what is due`, icon: CircleCheck, tone: 'amber' },
+      { label: 'To verify', value: f.pendingCount, hint: money(f.pending), icon: ClipboardCheck, tone: 'blue' },
+      { label: 'Outstanding', value: money(f.outstanding), hint: 'Still to collect', icon: TriangleAlert, tone: 'purple' },
+    ]
+  }
+  if (data.requests && data.role === 'STUDENT_SERVICES_OFFICER') {
+    const r = data.requests
+    return [
+      { label: 'Open', value: r.byStatus.OPEN, hint: 'New requests', icon: Inbox, tone: 'green' },
+      { label: 'Unassigned', value: r.unassigned, hint: 'Nobody has taken them', icon: TriangleAlert, tone: 'amber' },
+      { label: 'Mine', value: r.mine, hint: 'In progress with you', icon: UserCheckIcon, tone: 'blue' },
+      { label: 'Resolved', value: r.byStatus.RESOLVED, hint: `${r.upcoming.length} upcoming appointments`, icon: CircleCheck, tone: 'purple' },
+    ]
+  }
+  if (data.admissions) {
+    const a = data.admissions.byStatus
+    return [
+      { label: 'New applications', value: a.SUBMITTED, hint: 'Not reviewed yet', icon: FileUser, tone: 'green' },
+      { label: 'Under review', value: a.UNDER_REVIEW, hint: 'Documents being checked', icon: ClipboardCheck, tone: 'amber' },
+      { label: 'Offers', value: a.OFFERED, hint: 'Waiting to enrol', icon: BookIcon, tone: 'blue' },
+      { label: 'Enrolled', value: a.ENROLLED, hint: `${a.REJECTED} rejected`, icon: GraduationCap, tone: 'purple' },
+    ]
+  }
+  if (data.students && data.role === 'DEAN') {
+    const s = data.students
+    return [
+      { label: 'Students', value: s.total, hint: `Across ${s.byProgram.length} programmes`, icon: Users, tone: 'green' },
+      { label: 'Active', value: s.byStatus.ACTIVE, hint: `${s.byStatus.GRADUATED} graduated`, icon: CircleCheck, tone: 'amber' },
+      { label: `${s.currentIntakeYear} intake`, value: s.currentIntake, hint: 'New this year', icon: UserPlus, tone: 'blue' },
+      { label: 'At-risk', value: s.atRisk, hint: 'Across departments', icon: TriangleAlert, tone: 'purple' },
     ]
   }
   if (data.students) {
@@ -121,6 +182,76 @@ function statCards(data: DashboardData): StatCard[] {
 }
 
 function workQueue(data: DashboardData): Queue {
+  if (data.approvals) {
+    return {
+      title: 'Grades awaiting your approval',
+      viewAll: '/approvals',
+      empty: 'No grade sheets waiting.',
+      items: data.approvals.pending.map((o) => ({
+        key: o.id,
+        title: `${o.course.code} · ${o.course.title}`,
+        meta: `${o.lecturer?.fullName ?? 'No lecturer'} · ${o._count.enrollments} students`,
+        badge: { label: 'Submitted', tone: 'suspended' },
+        to: `/classes/${o.id}`,
+      })),
+    }
+  }
+  if (data.teaching) {
+    return {
+      title: 'Your classes this term',
+      viewAll: '/classes',
+      empty: 'No classes assigned this term.',
+      items: data.teaching.classes.map((c) => ({
+        key: c.id,
+        title: `${c.course.code} · ${c.course.title}`,
+        meta: `${c._count.enrollments} students · ${c._count.sessions} sessions`,
+        badge: { label: titleCase(c.gradeStatus), tone: c.gradeStatus === 'APPROVED' ? 'active' : c.gradeStatus === 'RETURNED' ? 'withdrawn' : 'suspended' },
+        to: `/classes/${c.id}`,
+      })),
+    }
+  }
+  if (data.finance) {
+    return {
+      title: 'Payments to verify',
+      viewAll: '/finance',
+      empty: 'No payments waiting.',
+      items: data.finance.pendingPayments.map((p) => ({
+        key: p.id,
+        title: `${p.invoice.student.firstName} ${p.invoice.student.lastName} · ${money(p.amount)}`,
+        meta: `${p.reference} · ${titleCase(p.method.replace('_', ' '))} · ${shortDate(p.createdAt)}`,
+        badge: { label: 'Pending', tone: 'suspended' },
+        to: '/finance',
+      })),
+    }
+  }
+  if (data.requests && data.role === 'STUDENT_SERVICES_OFFICER') {
+    return {
+      title: 'Requests in the queue',
+      viewAll: '/requests',
+      empty: 'The queue is empty.',
+      items: data.requests.queue.map((r) => ({
+        key: r.id,
+        title: r.subject,
+        meta: `${r.student.firstName} ${r.student.lastName} · ${titleCase(r.type.replace('_', ' '))} · ${shortDate(r.createdAt)}`,
+        badge: { label: titleCase(r.status.replace('_', ' ')), tone: r.status === 'OPEN' ? 'suspended' : 'graduated' },
+        to: '/requests',
+      })),
+    }
+  }
+  if (data.admissions) {
+    return {
+      title: 'Applications to review',
+      viewAll: '/applications',
+      empty: 'No applications waiting.',
+      items: data.admissions.latest.map((a) => ({
+        key: a.id,
+        title: `${a.firstName} ${a.lastName}`,
+        meta: `${a.program.code} · applied ${shortDate(a.createdAt)}`,
+        badge: { label: titleCase(a.status.replace('_', ' ')), tone: a.status === 'SUBMITTED' ? 'suspended' : 'graduated' },
+        to: '/applications',
+      })),
+    }
+  }
   if (data.students?.recent) {
     return {
       title: 'Latest registrations',
@@ -174,8 +305,26 @@ function workQueue(data: DashboardData): Queue {
           badge: { label: titleCase(data.myRecord.status), tone: STATUS_TONE[data.myRecord.status] },
           to: '/me',
         },
-        { key: 'courses', title: 'Course registration', meta: 'Opens with the courses module', badge: { label: 'Upcoming', tone: 'suspended' } },
-        { key: 'fees', title: 'School fees', meta: 'Opens with the fees module', badge: { label: 'Upcoming', tone: 'suspended' } },
+        {
+          key: 'courses',
+          title: 'Course registration',
+          meta: data.term ? `${data.term.name} · ${data.studentPortal?.registeredCourses ?? 0} courses registered` : 'No term open',
+          badge: data.term?.registrationOpen ? { label: 'Open', tone: 'active' } : { label: 'Closed', tone: 'neutral' },
+          to: '/my/courses',
+        },
+        {
+          key: 'fees',
+          title: 'School fees',
+          meta: data.studentPortal?.feeBalance ? `${money(data.studentPortal.feeBalance)} to pay` : 'Nothing owed',
+          badge: data.studentPortal?.feeBalance ? { label: 'Balance due', tone: 'suspended' } : { label: 'Paid', tone: 'active' },
+          to: '/my/fees',
+        },
+        {
+          key: 'grades',
+          title: 'Results',
+          meta: 'Approved grades and GPA',
+          to: '/my/grades',
+        },
       ],
     }
   }
@@ -196,6 +345,17 @@ export function DashboardPage() {
   if (!user) return null
 
   const actions = [
+    can('courses.register') && { to: '/my/courses', label: 'Register courses', icon: BookOpen },
+    can('fees.pay') && { to: '/my/fees', label: 'Pay fees', icon: Wallet },
+    can('requests.submit') && { to: '/my/requests', label: 'Submit a request', icon: Inbox },
+    can('teaching') && { to: '/classes', label: 'My classes', icon: Presentation },
+    can('grades.approve') && { to: '/approvals', label: 'Approve grades', icon: ClipboardCheck },
+    can('courses.manage') && { to: '/courses', label: 'Assign lecturers', icon: BookOpen },
+    can('applications.manage') && { to: '/applications', label: 'Review applications', icon: FileUser },
+    can('finance.manage') && { to: '/finance', label: 'Verify payments', icon: Wallet },
+    can('requests.manage') && { to: '/requests', label: 'Service requests', icon: Inbox },
+    can('terms.manage') && { to: '/terms', label: 'Academic terms', icon: CalendarDays },
+    can('reports.view') && { to: '/reports', label: 'Reports', icon: Layers },
     user.role === 'STUDENT' && { to: '/me', label: 'View my record', icon: IdCard },
     can('students.register') && { to: '/students/new', label: 'Register student', icon: UserPlus },
     can('students.view') && { to: '/students', label: 'Find a student', icon: GraduationCap },
@@ -203,7 +363,9 @@ export function DashboardPage() {
     can('audit.view') && { to: '/audit', label: 'Open audit log', icon: ScrollText },
     can('structure.view') && { to: '/structure', label: 'Academic structure', icon: Building2 },
     { to: '/change-password', label: 'Change password', icon: KeyRound },
-  ].filter(Boolean) as { to: string; label: string; icon: LucideIcon }[]
+  ]
+    .filter(Boolean)
+    .slice(0, 6) as { to: string; label: string; icon: LucideIcon }[]
 
   const firstName = user.fullName.split(' ')[0]
   const queue = data ? workQueue(data) : null
@@ -301,6 +463,81 @@ export function DashboardPage() {
           </div>
         </div>
       </div>
+
+      {user.role !== 'STUDENT' && (
+        <div className="dashboard-grid bottom">
+          <div className="panel">
+            <div className="panel-head">
+              <div>
+                <span className="eyebrow">AUDITABLE ACTIVITY</span>
+                <h2>Your recent updates</h2>
+              </div>
+              {can('audit.view') && (
+                <Link to="/audit" className="view-all">
+                  Activity log <ArrowRight size={16} />
+                </Link>
+              )}
+            </div>
+            <ol className="queue">
+              {(data?.myActivity ?? []).map((a) => (
+                <li key={a.id}>
+                  <span className="queue-body">
+                    <strong>{titleCase(a.action.replace(/[._]/g, ' '))}</strong>
+                    <small>{shortDate(a.createdAt)}</small>
+                  </span>
+                  <span className="badge graduated">{titleCase(a.entity)}</span>
+                </li>
+              ))}
+              {data && (data.myActivity ?? []).length === 0 && <li className="queue-empty muted">You have not changed anything yet.</li>}
+            </ol>
+          </div>
+          <div className="role-card">
+            <span className="role-card-eyebrow">
+              <CircleCheck size={16} /> ROLE ACCESS
+            </span>
+            <h2>{ROLE_LABELS[user.role]}</h2>
+            <p>{ROLE_GROUP_LABEL[user.role]}</p>
+            <ul>
+              {user.permissions.map((p) => (
+                <li key={p}>{PERMISSION_TEXT[p] ?? p}</li>
+              ))}
+            </ul>
+          </div>
+        </div>
+      )}
     </section>
   )
+}
+
+const ROLE_GROUP_LABEL: Record<Role, string> = {
+  STUDENT: 'Student Access',
+  LECTURER: 'Academic Delivery',
+  HEAD_OF_DEPARTMENT: 'Academic Delivery',
+  DEAN: 'Academic Delivery',
+  ADMISSIONS_OFFICER: 'Student Operations',
+  REGISTRAR: 'Student Operations',
+  FINANCE_OFFICER: 'Student Operations',
+  STUDENT_SERVICES_OFFICER: 'Student Operations',
+  SYSTEM_ADMINISTRATOR: 'System Control',
+}
+
+const PERMISSION_TEXT: Partial<Record<Permission, string>> = {
+  'users.manage': 'Manage users and roles',
+  'audit.view': 'View audit logs',
+  'structure.manage': 'Manage academic structure',
+  'structure.view': 'View academic structure',
+  'students.register': 'Register students',
+  'students.view': 'View student records',
+  'students.update': 'Edit student records',
+  'students.status': 'Change student status',
+  'terms.manage': 'Open and close registration',
+  'courses.manage': 'Manage courses',
+  'offerings.manage': 'Assign lecturers',
+  teaching: 'Attendance, grades and materials',
+  'grades.approve': 'Approve grades',
+  'transcripts.view': 'View transcripts',
+  'reports.view': 'View reports',
+  'finance.manage': 'Invoices, payments and waivers',
+  'requests.manage': 'Handle service requests',
+  'applications.manage': 'Review applications and offers',
 }
