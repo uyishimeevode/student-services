@@ -44,6 +44,58 @@ export class AccessPolicy {
     return hasPermission(user?.role, Permission.ChangeStudentStatus);
   }
 
+  manageTerms(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ManageTerms);
+  }
+
+  manageCourses(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ManageCourses);
+  }
+
+  manageOfferings(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ManageOfferings);
+  }
+
+  registerCourses(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.RegisterCourses);
+  }
+
+  teach(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.Teach);
+  }
+
+  approveGrades(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ApproveGrades);
+  }
+
+  viewTranscripts(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ViewTranscripts);
+  }
+
+  viewReports(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ViewReports);
+  }
+
+  manageFinance(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ManageFinance);
+  }
+
+  payFees(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.PayFees);
+  }
+
+  submitRequests(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.SubmitRequests);
+  }
+
+  manageRequests(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ManageRequests);
+  }
+
+  manageApplications(user: AuthUser | null) {
+    return hasPermission(user?.role, Permission.ManageApplications);
+  }
+
   /** Record check: Heads of Department see their department, Deans their faculty, students themselves. */
   viewStudent(user: AuthUser, student: StudentScope) {
     if (user.role === Role.STUDENT) return student.userId === user.id;
