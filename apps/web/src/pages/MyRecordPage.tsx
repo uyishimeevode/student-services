@@ -2,7 +2,7 @@ import { useEffect, useState } from 'react'
 import { api, errorMessage } from '../api/client'
 import type { Student } from '../api/types'
 import { ErrorNotice } from '../components/Field'
-import { StudentDetails } from '../components/StudentDetails'
+import { StudentDetails, StudentProfileHeader } from '../components/StudentDetails'
 
 export function MyRecordPage() {
   const [student, setStudent] = useState<Student | null>(null)
@@ -15,10 +15,15 @@ export function MyRecordPage() {
   }, [])
 
   return (
-    <section className="narrow">
-      <h1>My record</h1>
+    <section>
       <ErrorNotice error={error} />
-      {student && <StudentDetails student={student} />}
+      {student && (
+        <>
+          <StudentProfileHeader student={student} />
+          <StudentDetails student={student} />
+          <p className="muted small">If any detail is wrong, contact the Registrar's office to correct it.</p>
+        </>
+      )}
     </section>
   )
 }
