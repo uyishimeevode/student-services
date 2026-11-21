@@ -93,6 +93,7 @@ function fakePrisma(users: FakeUser[]) {
       groupBy: async () => [],
       count: async () => 0,
     },
+    enrollment: { findMany: async () => [] },
     student: {
       findMany: async () => [],
       findUnique: async () => null,
@@ -103,6 +104,12 @@ function fakePrisma(users: FakeUser[]) {
     department: { count: async () => 0 },
     program: { count: async () => 0, findMany: async () => [] },
     auditLog: { create: async () => ({}), findMany: async () => [] },
+    academicTerm: { findFirst: async () => null },
+    serviceRequest: {
+      groupBy: async () => [],
+      count: async () => 0,
+      findMany: async () => [],
+    },
     $transaction: async (fn: (tx: unknown) => unknown) => fn(fake),
     $queryRaw: async () => [{ '?column?': 1 }],
     $disconnect: async () => undefined,
