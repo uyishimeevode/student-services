@@ -12,6 +12,7 @@ import { Can } from '@nestjs/authorization';
 import { z } from 'zod';
 import { AccessPolicy } from '../common/access.policy.js';
 import type { AuthUser } from '../common/auth-user.js';
+import { ROLE_PERMISSIONS } from '../common/permissions.js';
 import {
   createUserSchema,
   listUsersSchema,
@@ -40,6 +41,15 @@ export class UsersController {
   @Get()
   list(@Query({ schema: listUsersSchema }) query: ListUsers) {
     return this.users.list(query);
+  }
+
+  /** The role to permission matrix, for the Roles and Permissions page. Declared before ':id'. */
+  @Get('roles')
+  roles() {
+    return Object.entries(ROLE_PERMISSIONS).map(([role, permissions]) => ({
+      role,
+      permissions,
+    }));
   }
 
   @Get(':id')
