@@ -51,6 +51,9 @@ model User {
   updatedAt          DateTime    @updatedAt @map("updated_at") @db.Timestamptz
   student            Student?
   auditLogs          AuditLog[]
+  teachingOfferings  CourseOffering[]  @relation("OfferingLecturer")
+  assignedRequests   ServiceRequest[]  @relation("RequestAssignee")
+  reviewedApplications Application[]   @relation("ApplicationReviewer")
 
   @@map("users")
 }
@@ -88,6 +91,8 @@ model Program {
   department    Department @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   createdAt     DateTime   @default(now()) @map("created_at") @db.Timestamptz
   students      Student[]
+  courses       Course[]
+  applications  Application[]
 
   @@map("programs")
 }
@@ -111,6 +116,10 @@ model Student {
   user               User          @relation(fields: [userId], references: [id], onDelete: Cascade)
   createdAt          DateTime      @default(now()) @map("created_at") @db.Timestamptz
   updatedAt          DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  enrollments        Enrollment[]
+  invoices           Invoice[]
+  requests           ServiceRequest[]
+  application        Application?
 
   @@index([lastName, firstName])
   @@index([programId])
@@ -130,4 +139,248 @@ model AuditLog {
   @@index([createdAt])
   @@index([entity, entityId])
   @@map("audit_logs")
+}
+
+// Teaching and learning
+
+model AcademicTerm {
+  id               String           @id @default(uuid()) @db.Uuid
+  name             String           @unique
+  /// Module fee charged per credit when a student books a module, in Rwandan francs.
+  feePerCredit     Int              @default(25000) @map("fee_per_credit")
+  startDate        DateTime         @map("start_date") @db.Date
+  endDate          DateTime         @map("end_date") @db.Date
+  isCurrent        Boolean          @default(false) @map("is_current")
+  registrationOpen Boolean          @default(false) @map("registration_open")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  offerings        CourseOffering[]
+  invoices         Invoice[]
+
+  @@map("academic_terms")
+}
+
+model Course {
+  id        String           @id @default(uuid()) @db.Uuid
+  code      String           @unique
+  title     String
+  credits   Int
+  yearLevel Int              @map("year_level")
+  semester  Int
+  programId String           @map("program_id") @db.Uuid
+  program   Program          @relation(fields: [programId], references: [id], onDelete: Restrict)
+  createdAt DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  offerings CourseOffering[]
+
+  @@index([programId, yearLevel])
+  @@map("courses")
+}
+
+enum GradeStatus {
+  DRAFT
+  SUBMITTED
+  APPROVED
+  RETURNED
+}
+
+model CourseOffering {
+  id          String              @id @default(uuid()) @db.Uuid
+  courseId    String              @map("course_id") @db.Uuid
+  course      Course              @relation(fields: [courseId], references: [id], onDelete: Restrict)
+  termId      String              @map("term_id") @db.Uuid
+  term        AcademicTerm        @relation(fields: [termId], references: [id], onDelete: Restrict)
+  lecturerId  String?             @map("lecturer_id") @db.Uuid
+  lecturer    User?               @relation("OfferingLecturer", fields: [lecturerId], references: [id], onDelete: SetNull)
+  gradeStatus GradeStatus         @default(DRAFT) @map("grade_status")
+  gradeNote   String?             @map("grade_note")
+  createdAt   DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  enrollments Enrollment[]
+  sessions    AttendanceSession[]
+  materials   CourseMaterial[]
+
+  @@unique([courseId, termId])
+  @@index([lecturerId])
+  @@map("course_offerings")
+}
+
+/// BOOKED: in the student's basket. REGISTERED: confirmed, on the class list.
+enum EnrollmentStatus {
+  BOOKED
+  REGISTERED
+}
+
+model Enrollment {
+  id         String             @id @default(uuid()) @db.Uuid
+  status     EnrollmentStatus   @default(REGISTERED)
+  registeredAt DateTime?        @map("registered_at") @db.Timestamptz
+  invoice    Invoice?
+  studentId  String             @map("student_id") @db.Uuid
+  student    Student            @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  offeringId String             @map("offering_id") @db.Uuid
+  offering   CourseOffering     @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  score      Float?
+  grade      String?
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  attendance AttendanceRecord[]
+
+  @@unique([studentId, offeringId])
+  @@map("enrollments")
+}
+
+model AttendanceSession {
+  id         String             @id @default(uuid()) @db.Uuid
+  offeringId String             @map("offering_id") @db.Uuid
+  offering   CourseOffering     @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  date       DateTime           @db.Date
+  topic      String?
+  createdAt  DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  records    AttendanceRecord[]
+
+  @@unique([offeringId, date])
+  @@map("attendance_sessions")
+}
+
+model AttendanceRecord {
+  id           String            @id @default(uuid()) @db.Uuid
+  sessionId    String            @map("session_id") @db.Uuid
+  session      AttendanceSession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  enrollmentId String            @map("enrollment_id") @db.Uuid
+  enrollment   Enrollment        @relation(fields: [enrollmentId], references: [id], onDelete: Cascade)
+  present      Boolean
+
+  @@unique([sessionId, enrollmentId])
+  @@map("attendance_records")
+}
+
+model CourseMaterial {
+  id         String         @id @default(uuid()) @db.Uuid
+  offeringId String         @map("offering_id") @db.Uuid
+  offering   CourseOffering @relation(fields: [offeringId], references: [id], onDelete: Cascade)
+  title      String
+  url        String
+  createdAt  DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  @@map("course_materials")
+}
+
+// Finance. Amounts are whole Rwandan francs.
+
+enum PaymentMethod {
+  MOBILE_MONEY
+  BANK_TRANSFER
+  CASH
+}
+
+enum PaymentStatus {
+  PENDING
+  VERIFIED
+  REJECTED
+}
+
+model Invoice {
+  id           String        @id @default(uuid()) @db.Uuid
+  studentId    String        @map("student_id") @db.Uuid
+  student      Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  termId       String?       @map("term_id") @db.Uuid
+  term         AcademicTerm? @relation(fields: [termId], references: [id], onDelete: SetNull)
+  /// Set for a module invoice generated from the registration basket.
+  enrollmentId String?       @unique @map("enrollment_id") @db.Uuid
+  enrollment   Enrollment?   @relation(fields: [enrollmentId], references: [id], onDelete: SetNull)
+  description  String
+  amount       Int
+  waiverAmount Int           @default(0) @map("waiver_amount")
+  waiverReason String?       @map("waiver_reason")
+  dueDate      DateTime      @map("due_date") @db.Date
+  createdAt    DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  payments     Payment[]
+
+  @@index([studentId])
+  @@map("invoices")
+}
+
+model Payment {
+  id         String        @id @default(uuid()) @db.Uuid
+  invoiceId  String        @map("invoice_id") @db.Uuid
+  invoice    Invoice       @relation(fields: [invoiceId], references: [id], onDelete: Cascade)
+  amount     Int
+  method     PaymentMethod
+  reference  String
+  status     PaymentStatus @default(PENDING)
+  note       String?
+  createdAt  DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  verifiedAt DateTime?     @map("verified_at") @db.Timestamptz
+
+  @@index([status])
+  @@map("payments")
+}
+
+// Student services
+
+enum RequestType {
+  TRANSCRIPT
+  LETTER
+  APPOINTMENT
+  RECORD_CORRECTION
+  OTHER
+}
+
+enum RequestStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+  REJECTED
+}
+
+model ServiceRequest {
+  id            String        @id @default(uuid()) @db.Uuid
+  studentId     String        @map("student_id") @db.Uuid
+  student       Student       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  type          RequestType
+  subject       String
+  description   String
+  status        RequestStatus @default(OPEN)
+  assignedToId  String?       @map("assigned_to_id") @db.Uuid
+  assignedTo    User?         @relation("RequestAssignee", fields: [assignedToId], references: [id], onDelete: SetNull)
+  response      String?
+  appointmentAt DateTime?     @map("appointment_at") @db.Timestamptz
+  createdAt     DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([status])
+  @@map("service_requests")
+}
+
+// Admissions
+
+enum ApplicationStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  OFFERED
+  REJECTED
+  ENROLLED
+}
+
+model Application {
+  id                String            @id @default(uuid()) @db.Uuid
+  firstName         String            @map("first_name")
+  lastName          String            @map("last_name")
+  email             String
+  phone             String
+  gender            Gender
+  dateOfBirth       DateTime          @map("date_of_birth") @db.Date
+  previousSchool    String            @map("previous_school")
+  programId         String            @map("program_id") @db.Uuid
+  program           Program           @relation(fields: [programId], references: [id], onDelete: Restrict)
+  intakeYear        Int               @map("intake_year")
+  status            ApplicationStatus @default(SUBMITTED)
+  documentsVerified Boolean           @default(false) @map("documents_verified")
+  decisionNote      String?           @map("decision_note")
+  reviewedById      String?           @map("reviewed_by_id") @db.Uuid
+  reviewedBy        User?             @relation("ApplicationReviewer", fields: [reviewedById], references: [id], onDelete: SetNull)
+  studentId         String?           @unique @map("student_id") @db.Uuid
+  student           Student?          @relation(fields: [studentId], references: [id], onDelete: SetNull)
+  createdAt         DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt         DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+
+  @@index([status])
+  @@map("applications")
 }
