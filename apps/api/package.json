@@ -24,7 +24,9 @@
     "db:deploy": "prisma migrate deploy",
     "db:seed": "tsx src/database/seed.ts",
     "db:seed:prod": "node dist/database/seed.js",
-    "typecheck": "tsc --noEmit -p tsconfig.json"
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "db:seed:demo": "tsx src/database/seed.ts --demo",
+    "db:seed:demo:prod": "node dist/database/seed.js --demo"
   },
   "dependencies": {
     "@nestjs/authentication": "^0.1.7",
