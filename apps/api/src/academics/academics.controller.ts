@@ -1,20 +1,37 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { CurrentUser } from '@nestjs/authentication';
 import { Can } from '@nestjs/authorization';
 import { z } from 'zod';
 import { AccessPolicy } from '../common/access.policy.js';
 import type { AuthUser } from '../common/auth-user.js';
 import {
+  createCourseSchema,
   createDepartmentSchema,
   createFacultySchema,
   createProgramSchema,
+  createTermSchema,
+  listCoursesSchema,
+  updateTermSchema,
+  type CreateCourse,
   type CreateDepartment,
   type CreateFaculty,
   type CreateProgram,
+  type CreateTerm,
+  type ListCourses,
+  type UpdateTerm,
 } from './academics.schemas.js';
 import { AcademicsService } from './academics.service.js';
 
 const optionalId = z.uuid().optional();
+const idSchema = z.uuid();
 
 @Controller()
 export class AcademicsController {
@@ -67,5 +84,54 @@ export class AcademicsController {
     @Body({ schema: createProgramSchema }) body: CreateProgram,
   ) {
     return this.academics.createProgram(actor, body);
+  }
+
+  @Get('terms')
+  @Can.Anyone()
+  listTerms() {
+    return this.academics.listTerms();
+  }
+
+  @Get('terms/current')
+  @Can.Anyone()
+  currentTerm() {
+    return this.academics.currentTerm();
+  }
+
+  @Post('terms')
+  @Can(AccessPolicy, 'manageTerms')
+  createTerm(
+    @CurrentUser() actor: AuthUser,
+    @Body({ schema: createTermSchema }) body: CreateTerm,
+  ) {
+    return this.academics.createTerm(actor, body);
+  }
+
+  @Patch('terms/:id')
+  @Can(AccessPolicy, 'manageTerms')
+  updateTerm(
+    @CurrentUser() actor: AuthUser,
+    @Param('id', { schema: idSchema }) id: string,
+    @Body({ schema: updateTermSchema }) body: UpdateTerm,
+  ) {
+    return this.academics.updateTerm(actor, id, body);
+  }
+
+  @Get('courses')
+  @Can(AccessPolicy, 'viewStructure')
+  listCourses(
+    @CurrentUser() actor: AuthUser,
+    @Query({ schema: listCoursesSchema }) query: ListCourses,
+  ) {
+    return this.academics.listCourses(actor, query);
+  }
+
+  @Post('courses')
+  @Can(AccessPolicy, 'manageCourses')
+  createCourse(
+    @CurrentUser() actor: AuthUser,
+    @Body({ schema: createCourseSchema }) body: CreateCourse,
+  ) {
+    return this.academics.createCourse(actor, body);
   }
 }
