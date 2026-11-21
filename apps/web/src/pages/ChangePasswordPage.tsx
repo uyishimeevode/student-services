@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { api, errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
-import { ErrorNotice, Field } from '../components/Field'
+import { ErrorNotice, Field, PageHeader, Panel } from '../components/Field'
 
 export function ChangePasswordPage() {
   const { user, refresh } = useAuth()
@@ -34,16 +34,17 @@ export function ChangePasswordPage() {
 
   return (
     <section className="narrow">
-      <h1>Change password</h1>
+      <PageHeader eyebrow="Account" title="Change password" subtitle="At least 8 characters, with a letter and a digit." />
       {user?.mustChangePassword && (
         <p className="notice">You signed in with a temporary password. Set your own password to continue.</p>
       )}
-      <form className="card form" onSubmit={submit}>
+      <Panel>
+      <form className="form" onSubmit={submit}>
         <ErrorNotice error={error} />
         <Field label="Current password">
           <input type="password" value={currentPassword} onChange={(e) => setCurrentPassword(e.target.value)} required />
         </Field>
-        <Field label="New password (8+ characters, a letter and a digit)">
+        <Field label="New password">
           <input type="password" value={newPassword} onChange={(e) => setNewPassword(e.target.value)} required minLength={8} />
         </Field>
         <Field label="Confirm new password">
@@ -53,6 +54,7 @@ export function ChangePasswordPage() {
           {busy ? 'Saving...' : 'Save password'}
         </button>
       </form>
+      </Panel>
     </section>
   )
 }

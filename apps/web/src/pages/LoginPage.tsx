@@ -1,5 +1,5 @@
 import { useState, type FormEvent } from 'react'
-import { Navigate, useLocation, useNavigate } from 'react-router-dom'
+import { Link, Navigate, useLocation, useNavigate } from 'react-router-dom'
 import { errorMessage } from '../api/client'
 import { useAuth } from '../auth/AuthContext'
 import { ErrorNotice, Field } from '../components/Field'
@@ -62,6 +62,9 @@ export function LoginPage() {
         <button type="submit" disabled={busy}>
           {busy ? 'Signing in...' : 'Sign in'}
         </button>
+        <p className="muted small center">
+          New applicant? <Link to="/apply">Apply for admission</Link>
+        </p>
       </form>
     </div>
   )
