@@ -146,6 +146,26 @@ export class StudentsService {
     return this.toResponse(student);
   }
 
+  /** The student record behind a signed-in student account; 404 when the account has none. */
+  async requireOwnRecord(actor: AuthUser) {
+    const student = await this.prisma.student.findUnique({
+      where: { userId: actor.id },
+      select: {
+        id: true,
+        programId: true,
+        yearOfStudy: true,
+        status: true,
+        firstName: true,
+        lastName: true,
+      },
+    });
+    if (!student)
+      throw new NotFoundException(
+        'No student record is linked to this account',
+      );
+    return student;
+  }
+
   async update(actor: AuthUser, id: string, input: UpdateStudent) {
     const current = await this.load(id);
     const { programId, ...rest } = input;
