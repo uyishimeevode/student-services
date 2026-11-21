@@ -1,0 +1,26 @@
+# Render Blueprint: deploys the API as a web service.
+# Render dashboard: New > Blueprint > pick this repo. Fill in the variables marked sync: false.
+services:
+  - type: web
+    name: student-services-api
+    runtime: node
+    plan: free
+    rootDir: apps/api
+    # Dev dependencies (Nest CLI, TypeScript) are needed to build, so include them explicitly.
+    buildCommand: npm ci --include=dev && npm run build
+    # Applies pending migrations, then starts the API.
+    startCommand: npx prisma migrate deploy && node dist/main.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_VERSION
+        value: "22"
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_TTL
+        value: 8h
+      - key: CORS_ORIGIN
+        sync: false
